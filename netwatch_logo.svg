@@ -1,0 +1,96 @@
+<svg width="680" height="720" viewBox="0 0 680 720" xmlns="http://www.w3.org/2000/svg">
+
+<!-- Outer bezel rings -->
+<circle cx="340" cy="340" r="258" fill="#0d1b3e"/>
+<circle cx="340" cy="340" r="250" fill="#112050"/>
+<circle cx="340" cy="340" r="240" fill="#0a1630"/>
+<circle cx="340" cy="340" r="230" fill="#0d1f40"/>
+
+<!-- Watch face grid (clipped to face) -->
+<defs>
+  <clipPath id="face-clip">
+    <circle cx="340" cy="340" r="230"/>
+  </clipPath>
+</defs>
+<g clip-path="url(#face-clip)">
+  <g stroke="#1e3a6e" stroke-width="0.5" fill="none">
+    <circle cx="340" cy="340" r="60"/>
+    <circle cx="340" cy="340" r="100"/>
+    <circle cx="340" cy="340" r="140"/>
+    <circle cx="340" cy="340" r="180"/>
+    <circle cx="340" cy="340" r="220"/>
+  </g>
+  <g stroke="#1a3060" stroke-width="0.4" fill="none">
+    <line x1="340" y1="110" x2="340" y2="570"/>
+    <line x1="110" y1="340" x2="570" y2="340"/>
+    <line x1="177" y1="177" x2="503" y2="503"/>
+    <line x1="503" y1="177" x2="177" y2="503"/>
+    <line x1="208" y1="135" x2="472" y2="545"/>
+    <line x1="472" y1="135" x2="208" y2="545"/>
+    <line x1="135" y1="208" x2="545" y2="472"/>
+    <line x1="545" y1="208" x2="135" y2="472"/>
+  </g>
+</g>
+
+<!-- Face border -->
+<circle cx="340" cy="340" r="230" fill="none" stroke="#2a4a9e" stroke-width="3"/>
+<circle cx="340" cy="340" r="222" fill="none" stroke="#1a3060" stroke-width="1"/>
+
+<!-- Hour markers - cardinal -->
+<g fill="#c8d8f8">
+  <rect x="337" y="118" width="6" height="20" rx="3"/>
+  <rect x="337" y="542" width="6" height="20" rx="3"/>
+  <rect x="118" y="337" width="20" height="6" rx="3"/>
+  <rect x="542" y="337" width="20" height="6" rx="3"/>
+</g>
+<!-- Minor markers -->
+<g fill="#6a82b4">
+  <rect x="338.5" y="128" width="3" height="12" rx="1.5"/>
+  <rect x="338.5" y="520" width="3" height="12" rx="1.5"/>
+  <rect x="128" y="338.5" width="12" height="3" rx="1.5"/>
+  <rect x="520" y="338.5" width="12" height="3" rx="1.5"/>
+  <rect x="338.5" y="133" width="3" height="8" rx="1.5" transform="rotate(30 340 340)"/>
+  <rect x="338.5" y="133" width="3" height="8" rx="1.5" transform="rotate(60 340 340)"/>
+  <rect x="338.5" y="133" width="3" height="8" rx="1.5" transform="rotate(120 340 340)"/>
+  <rect x="338.5" y="133" width="3" height="8" rx="1.5" transform="rotate(150 340 340)"/>
+  <rect x="338.5" y="133" width="3" height="8" rx="1.5" transform="rotate(210 340 340)"/>
+  <rect x="338.5" y="133" width="3" height="8" rx="1.5" transform="rotate(240 340 340)"/>
+  <rect x="338.5" y="133" width="3" height="8" rx="1.5" transform="rotate(300 340 340)"/>
+  <rect x="338.5" y="133" width="3" height="8" rx="1.5" transform="rotate(330 340 340)"/>
+</g>
+
+<!-- Clock hands -->
+<g transform="translate(340,340)">
+  <line x1="0" y1="0" x2="0" y2="-115" stroke="#3a6aee" stroke-width="5" stroke-linecap="round"/>
+  <line x1="0" y1="0" x2="68" y2="0" stroke="#e8f0ff" stroke-width="3.5" stroke-linecap="round"/>
+  <line x1="0" y1="0" x2="-22" y2="58" stroke="#c03030" stroke-width="2.5" stroke-linecap="round"/>
+</g>
+<circle cx="340" cy="340" r="8" fill="#4a7aee"/>
+<circle cx="340" cy="340" r="4" fill="#e8f0ff"/>
+
+<!-- WiFi icon (top of face) -->
+<g transform="translate(340, 248)">
+  <path d="M-52,-30 Q0,-65 52,-30" fill="none" stroke="#00c8a0" stroke-width="9" stroke-linecap="round"/>
+  <path d="M-34,-12 Q0,-36 34,-12" fill="none" stroke="#00c8a0" stroke-width="9" stroke-linecap="round"/>
+  <path d="M-16,6 Q0,-10 16,6" fill="none" stroke="#00c8a0" stroke-width="9" stroke-linecap="round"/>
+  <circle cx="0" cy="20" r="7" fill="#00c8a0"/>
+</g>
+
+<!-- Padlock icon (left of face) -->
+<g transform="translate(260, 375)">
+  <rect x="-22" y="0" width="44" height="32" rx="6" fill="#e8b020"/>
+  <path d="M-12,-14 L-12,-6 Q-12,0 0,0 Q12,0 12,-6 L12,-14 Q12,-28 0,-28 Q-12,-28 -12,-14Z" fill="none" stroke="#e8b020" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="0" cy="16" r="5" fill="#0a1630"/>
+  <rect x="-1.5" y="16" width="3" height="8" rx="1.5" fill="#0a1630"/>
+</g>
+
+<!-- Watch crown / lug -->
+<circle cx="340" cy="340" r="258" fill="none" stroke="#1a3060" stroke-width="2"/>
+<rect x="305" y="64" width="70" height="22" rx="11" fill="#0d1b3e" stroke="#1e3a6e" stroke-width="1.5"/>
+<rect x="315" y="596" width="50" height="18" rx="9" fill="#0d1b3e"/>
+
+<!-- Wordmark -->
+<text x="340" y="636" text-anchor="middle" font-size="36" font-family="Georgia, serif" font-weight="700" fill="#d0e0ff" letter-spacing="4">NetWatch</text>
+<text x="340" y="664" text-anchor="middle" font-size="13" font-family="Georgia, serif" font-weight="400" fill="#4a6090" letter-spacing="7">NETWORK MONITOR</text>
+
+</svg>

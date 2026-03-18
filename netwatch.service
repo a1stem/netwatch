@@ -1,0 +1,29 @@
+[Unit]
+Description=NetWatch — privileged network connection monitor daemon
+Documentation=https://github.com/youruser/netwatch
+After=network.target
+
+[Service]
+Type=simple
+# Run as root so psutil can read all connections.
+# For a hardened setup, replace with a dedicated user + CAP_NET_ADMIN:
+#   User=netwatch
+#   AmbientCapabilities=CAP_NET_ADMIN
+#   CapabilityBoundingSet=CAP_NET_ADMIN
+ExecStart=/usr/bin/python3 /opt/netwatch/daemon/netwatch_daemon.py
+Restart=on-failure
+RestartSec=5
+
+# Runtime directory for the socket
+RuntimeDirectory=netwatch
+RuntimeDirectoryMode=0750
+
+# Harden the service
+PrivateTmp=true
+NoNewPrivileges=false
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/run/netwatch
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,24 @@
+cat > .gitignore << 'EOF'
+# Database files (auto-generated at runtime)
+data/connections.db
+data/connections.db-wal
+data/connections.db-shm
+
+# GeoIP database (user downloads separately, too large for git)
+data/GeoLite2-Country.mmdb
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+
+# OS files
+.DS_Store
+Thumbs.db
+EOF
