@@ -11,11 +11,20 @@ or (recommended):
     pkexec python3 /full/path/to/netwatch/main.py
 """
 
-import logging
 import os
 import sys
 
-# ── Logging setup (before any imports that log) ─────────────────────────────
+# ── Path setup — MUST be first, before any local imports ─────────────────────
+# sudo strips the user environment so Python won't find backend/ or ui/
+# unless we explicitly insert the project root right here.
+
+_HERE = os.path.dirname(os.path.abspath(__file__))
+if _HERE not in sys.path:
+    sys.path.insert(0, _HERE)
+
+import logging
+
+# ── Logging setup ─────────────────────────────────────────────────────────────
 
 logging.basicConfig(
     level=logging.INFO,
@@ -23,12 +32,6 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 log = logging.getLogger("netwatch.main")
-
-# ── Path setup ───────────────────────────────────────────────────────────────
-
-_HERE = os.path.dirname(os.path.abspath(__file__))
-if _HERE not in sys.path:
-    sys.path.insert(0, _HERE)
 
 # ── PyQt5 import ─────────────────────────────────────────────────────────────
 
@@ -56,8 +59,10 @@ def _check_privileges() -> bool:
 
 def _init_subsystems():
     """Initialise all backend singletons before creating the window."""
-    import backend.geoip as geoip
-    geoip.init()            # loads GeoLite2-Country.mmdb if present
+    # sys.path is already patched at module load time, so these always resolve
+    # correctly whether running as: sudo python3 main.py, or pkexec, or normally.
+    from backend import geoip
+    geoip.init()
 
     from data.trust_store import TrustStore
     from data.history import History
