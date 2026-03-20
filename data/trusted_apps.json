@@ -30,6 +30,38 @@
       "reason": "Blocked via NetWatch \u2014 ?",
       "added": "2026-03-18T17:25:27",
       "ufw_applied": true
+    },
+    {
+      "remote_ip": "140.82.113.3",
+      "remote_port": 22,
+      "proto": "tcp",
+      "reason": "Auto-denied: no identifiable process",
+      "added": "2026-03-20T15:44:52",
+      "ufw_applied": true
+    },
+    {
+      "remote_ip": "2620:2d:4000:1::97",
+      "remote_port": 80,
+      "proto": "tcp",
+      "reason": "Blocked via NetWatch \u2014 \u26a0 unidentified",
+      "added": "2026-03-20T15:59:14",
+      "ufw_applied": true
+    },
+    {
+      "remote_ip": "2620:2d:4000:1::101",
+      "remote_port": 80,
+      "proto": "tcp",
+      "reason": "Auto-denied: no identifiable process",
+      "added": "2026-03-20T16:01:22",
+      "ufw_applied": true
+    },
+    {
+      "remote_ip": "185.125.190.98",
+      "remote_port": 80,
+      "proto": "tcp",
+      "reason": "Auto-denied: no identifiable process",
+      "added": "2026-03-20T16:13:37",
+      "ufw_applied": true
     }
   ]
 }
