@@ -1,30 +1,26 @@
 #!/usr/bin/env python3
 """
 main.py — NetWatch entry point
--------------------------------
-Checks for necessary privileges, initialises all subsystems,
-and launches the PyQt5 application.
-
-Run with:
-    sudo python3 main.py
-or (recommended):
-    pkexec python3 /full/path/to/netwatch/main.py
 """
 
 import os
 import sys
 
-# ── Path setup — MUST be first, before any local imports ─────────────────────
-# sudo strips the user environment so Python won't find backend/ or ui/
-# unless we explicitly insert the project root right here.
+# ── Path setup — absolute, sudo-safe ─────────────────────────────────────────
+# os.path.abspath resolves relative __file__ values that sudo can produce.
+# We also add the parent of wherever this file physically lives, so the
+# backend/, ui/, and data/ sibling packages are always importable.
 
-_HERE = os.path.dirname(os.path.abspath(__file__))
+_HERE = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
 if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
 
-import logging
+# Belt-and-suspenders: also insert cwd in case __file__ is still ambiguous
+_CWD = os.path.abspath(os.getcwd())
+if _CWD not in sys.path:
+    sys.path.insert(0, _CWD)
 
-# ── Logging setup ─────────────────────────────────────────────────────────────
+import logging
 
 logging.basicConfig(
     level=logging.INFO,
@@ -32,6 +28,11 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 log = logging.getLogger("netwatch.main")
+
+# ── Diagnostic (comment out once working) ────────────────────────────────────
+log.info("sys.path[0:3] = %s", sys.path[:3])
+log.info("_HERE = %s", _HERE)
+log.info("backend exists = %s", os.path.isdir(os.path.join(_HERE, "backend")))
 
 # ── PyQt5 import ─────────────────────────────────────────────────────────────
 
@@ -45,22 +46,18 @@ except ImportError:
           "or:               pip3 install PyQt5")
     sys.exit(1)
 
+# ── Icon (import here so path is resolved after sys.path is set) ────────────
+from ui.icon_loader import app_icon
+
 # ── Privilege check ───────────────────────────────────────────────────────────
 
 def _check_privileges() -> bool:
-    """
-    psutil.net_connections(kind='inet') requires either root or CAP_NET_ADMIN.
-    We warn the user rather than hard-exit so they can at least see the GUI.
-    """
     return os.geteuid() == 0
 
 
 # ── Subsystem bootstrap ───────────────────────────────────────────────────────
 
 def _init_subsystems():
-    """Initialise all backend singletons before creating the window."""
-    # sys.path is already patched at module load time, so these always resolve
-    # correctly whether running as: sudo python3 main.py, or pkexec, or normally.
     from backend import geoip
     geoip.init()
 
@@ -77,15 +74,14 @@ def _init_subsystems():
 def main() -> int:
     app = QApplication(sys.argv)
     app.setApplicationName("NetWatch")
+    app.setWindowIcon(app_icon())       # taskbar + Alt+Tab on most desktops
     app.setOrganizationName("NetWatch")
-    app.setQuitOnLastWindowClosed(False)    # keep running in tray
+    app.setQuitOnLastWindowClosed(False)
 
-    # Global font
     font = QFont("Ubuntu", 10)
     font.setStyleHint(QFont.SansSerif)
     app.setFont(font)
 
-    # Stylesheet — minimal, dark-border theme
     app.setStyleSheet("""
         QMainWindow, QWidget  { background: #FAFAF8; }
         QTabWidget::pane      { border: 1px solid #D3D1C7; border-radius: 4px; }
@@ -105,7 +101,6 @@ def main() -> int:
         QSplitter::handle     { background: #D3D1C7; width: 1px; }
     """)
 
-    # Privilege warning
     if not _check_privileges():
         msg = QMessageBox()
         msg.setIcon(QMessageBox.Warning)
@@ -122,7 +117,6 @@ def main() -> int:
         )
         msg.exec_()
 
-    # Initialise subsystems
     try:
         trust_store, history = _init_subsystems()
     except Exception as exc:
@@ -130,7 +124,6 @@ def main() -> int:
         QMessageBox.critical(None, "NetWatch — startup error", str(exc))
         return 1
 
-    # Create and show main window
     from ui.main_window import MainWindow
     window = MainWindow(trust_store=trust_store, history=history)
     window.show()

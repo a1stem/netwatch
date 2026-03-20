@@ -27,6 +27,7 @@ from data.trust_store import TrustStore
 from data.history import History
 import backend.geoip as geoip
 
+from ui.icon_loader import app_icon
 from ui.conn_table import ConnectionTableView
 from ui.proc_tree import ProcessTreePanel
 from ui.repo_panel import RepoPanel
@@ -138,6 +139,7 @@ class MainWindow(QMainWindow):
 
     def _build_ui(self) -> None:
         self.setWindowTitle("NetWatch — Live Connection Monitor")
+        self.setWindowIcon(app_icon())  # title bar + GNOME/KDE task switcher
         self.resize(1280, 780)
         self.setMinimumSize(900, 600)
 
