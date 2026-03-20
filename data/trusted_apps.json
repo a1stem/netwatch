@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "trusted_apps": {
+    "/opt/brave.com/brave/brave": {
+      "exe": "/opt/brave.com/brave/brave",
+      "name": "brave",
+      "added": "2026-03-20T14:58:45",
+      "notes": ""
+    },
+    "/usr/sbin/NetworkManager": {
+      "exe": "/usr/sbin/NetworkManager",
+      "name": "NetworkManager",
+      "added": "2026-03-20T14:58:50",
+      "notes": ""
+    }
+  },
+  "blocked_rules": [
+    {
+      "remote_ip": "2607:6bc0::10",
+      "remote_port": 443,
+      "proto": "tcp",
+      "reason": "Blocked via NetWatch \u2014 ?",
+      "added": "2026-03-18T17:25:22",
+      "ufw_applied": true
+    },
+    {
+      "remote_ip": "34.120.108.227",
+      "remote_port": 443,
+      "proto": "tcp",
+      "reason": "Blocked via NetWatch \u2014 ?",
+      "added": "2026-03-18T17:25:27",
+      "ufw_applied": true
+    }
+  ]
+}
