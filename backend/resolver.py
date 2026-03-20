@@ -2,11 +2,14 @@
 resolver.py
 -----------
 Resolves a PID to a full ProcessNode with its complete parent ancestry chain.
-This is the core of the "don't block a child without knowing its parent" safety feature.
+Includes deep fallbacks via /proc for when psutil returns no name (kernel threads,
+rapidly-exiting processes, or permission edge cases).
 """
 
 from __future__ import annotations
 import logging
+import os
+import re
 from dataclasses import dataclass, field
 from typing import Optional
 import psutil
@@ -16,31 +19,26 @@ log = logging.getLogger(__name__)
 
 @dataclass
 class ProcessNode:
-    """Represents one process in the ancestry chain."""
     pid: int
     name: str
-    exe: str                        # full path, e.g. /usr/bin/firefox
-    cmdline: str                    # joined command line for display
+    exe: str
+    cmdline: str
     ppid: Optional[int]
     username: str
     children: list["ProcessNode"] = field(default_factory=list)
-
-    # Filled in later by trust_store
     is_trusted: bool = False
     is_package_manager: bool = False
+    source: str = "psutil"      # "psutil" | "proc" | "unknown"
 
     def display_name(self) -> str:
-        """Short human-readable label: 'firefox (/usr/bin/firefox)'"""
         if self.exe and self.exe != self.name:
             return f"{self.name}  ({self.exe})"
         return self.name
 
     def ancestry_path(self) -> str:
-        """Used for display in the tree panel, e.g. systemd > gnome-session > firefox"""
         return self.name
 
 
-# Package manager executable names to auto-flag
 _PKG_MANAGERS = frozenset({
     "apt", "apt-get", "apt-cache", "dpkg", "aptd", "unattended-upgrade",
     "snap", "snapd", "flatpak", "pip", "pip3", "pipx",
@@ -48,19 +46,94 @@ _PKG_MANAGERS = frozenset({
 })
 
 
+# ── /proc fallback readers ────────────────────────────────────────────────────
+
+def _proc_read(pid: int, fname: str) -> str:
+    """Safely read a /proc/PID/ file, return empty string on any error."""
+    try:
+        with open(f"/proc/{pid}/{fname}", "rb") as f:
+            return f.read(4096).replace(b"\x00", b" ").decode(errors="replace").strip()
+    except OSError:
+        return ""
+
+
+def _proc_name(pid: int) -> str:
+    """Read process name from /proc/PID/comm (most reliable, always available)."""
+    return _proc_read(pid, "comm")
+
+
+def _proc_exe(pid: int) -> str:
+    """Read exe path via /proc/PID/exe symlink."""
+    try:
+        return os.readlink(f"/proc/{pid}/exe")
+    except OSError:
+        return ""
+
+
+def _proc_cmdline(pid: int) -> str:
+    return _proc_read(pid, "cmdline")[:200]
+
+
+def _proc_ppid(pid: int) -> int:
+    """Read PPID from /proc/PID/status."""
+    status = _proc_read(pid, "status")
+    m = re.search(r"PPid:\s*(\d+)", status)
+    return int(m.group(1)) if m else 0
+
+
+def _proc_username(pid: int) -> str:
+    """Read UID from /proc/PID/status and resolve to username."""
+    status = _proc_read(pid, "status")
+    m = re.search(r"Uid:\s*(\d+)", status)
+    if not m:
+        return "?"
+    uid = int(m.group(1))
+    try:
+        import pwd
+        return pwd.getpwuid(uid).pw_name
+    except (KeyError, ImportError):
+        return str(uid)
+
+
+def _make_node_from_proc(pid: int) -> Optional[ProcessNode]:
+    """Build a ProcessNode entirely from /proc without psutil."""
+    if not os.path.isdir(f"/proc/{pid}"):
+        return None
+    name = _proc_name(pid) or f"pid-{pid}"
+    exe  = _proc_exe(pid)
+    cmdline = _proc_cmdline(pid)
+    ppid = _proc_ppid(pid)
+    username = _proc_username(pid)
+    is_pm = name.lower() in _PKG_MANAGERS
+    return ProcessNode(
+        pid=pid, name=name, exe=exe, cmdline=cmdline,
+        ppid=ppid, username=username,
+        is_package_manager=is_pm, source="proc",
+    )
+
+
+# ── psutil helpers ────────────────────────────────────────────────────────────
+
 def _safe_proc_info(proc: psutil.Process) -> Optional[dict]:
-    """Gather process fields tolerantly — process may vanish mid-read."""
     try:
         with proc.oneshot():
+            name = proc.name()
+            exe  = _safe_exe(proc)
+            # If psutil gives empty name, fall back to /proc/comm
+            if not name or name == "?":
+                name = _proc_name(proc.pid) or f"pid-{proc.pid}"
+            if not exe:
+                exe = _proc_exe(proc.pid)
             return {
                 "pid":      proc.pid,
-                "name":     proc.name(),
-                "exe":      _safe_exe(proc),
-                "cmdline":  " ".join(proc.cmdline()) or proc.name(),
+                "name":     name,
+                "exe":      exe,
+                "cmdline":  " ".join(proc.cmdline()) or _proc_cmdline(proc.pid) or name,
                 "ppid":     proc.ppid(),
                 "username": _safe_username(proc),
             }
     except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+        # Full fallback to /proc
         return None
 
 
@@ -68,14 +141,14 @@ def _safe_exe(proc: psutil.Process) -> str:
     try:
         return proc.exe()
     except (psutil.AccessDenied, FileNotFoundError, psutil.NoSuchProcess):
-        return ""
+        return _proc_exe(proc.pid)
 
 
 def _safe_username(proc: psutil.Process) -> str:
     try:
         return proc.username()
     except (psutil.AccessDenied, psutil.NoSuchProcess):
-        return "?"
+        return _proc_username(proc.pid)
 
 
 def _make_node(info: dict) -> ProcessNode:
@@ -83,67 +156,111 @@ def _make_node(info: dict) -> ProcessNode:
         pm in info["exe"].lower() for pm in _PKG_MANAGERS
     )
     return ProcessNode(
-        pid=info["pid"],
-        name=info["name"],
-        exe=info["exe"],
-        cmdline=info["cmdline"],
-        ppid=info["ppid"],
-        username=info["username"],
-        is_package_manager=is_pm,
+        pid=info["pid"], name=info["name"], exe=info["exe"],
+        cmdline=info["cmdline"], ppid=info["ppid"], username=info["username"],
+        is_package_manager=is_pm, source="psutil",
     )
 
 
+# ── Public API ────────────────────────────────────────────────────────────────
+
 def resolve_process_chain(pid: int) -> Optional[list[ProcessNode]]:
     """
-    Walk the parent chain for `pid` up to PID 1 (or until psutil gives up).
-
-    Returns a list ordered [root, ..., direct_parent, target_process].
-    Returns None if the process no longer exists.
-
-    Example for a Firefox Web Content child:
-        [ProcessNode(systemd,1), ProcessNode(gnome-session,2201),
-         ProcessNode(firefox,8832), ProcessNode(Web Content,8901)]
+    Walk the parent chain for pid up to PID 1.
+    Uses psutil with /proc fallback at every step.
+    Returns list ordered [root … target_process].
     """
-    chain: list[ProcessNode] = []
-    visited: set[int] = set()
-
-    try:
-        proc = psutil.Process(pid)
-    except (psutil.NoSuchProcess, psutil.AccessDenied):
+    if not pid:
         return None
 
-    # Walk upward: target → parent → grandparent → … → init
-    current = proc
-    while current is not None:
-        if current.pid in visited:
-            break                   # cycle guard (shouldn't happen on Linux)
-        visited.add(current.pid)
+    chain: list[ProcessNode] = []
+    visited: set[int] = set()
+    current_pid = pid
 
-        info = _safe_proc_info(current)
-        if info is None:
-            break
+    while current_pid and current_pid not in visited:
+        visited.add(current_pid)
 
-        chain.append(_make_node(info))
-
-        if current.pid <= 1:
-            break
-
+        # Try psutil first, then /proc
+        node: Optional[ProcessNode] = None
         try:
-            parent = current.parent()
-            if parent is None or parent.pid in visited:
-                break
-            current = parent
+            proc = psutil.Process(current_pid)
+            info = _safe_proc_info(proc)
+            if info:
+                node = _make_node(info)
         except (psutil.NoSuchProcess, psutil.AccessDenied):
+            pass
+
+        if node is None:
+            node = _make_node_from_proc(current_pid)
+
+        if node is None:
             break
 
-    # Reverse so index 0 is the root (systemd/init)
+        chain.append(node)
+
+        next_ppid = node.ppid or 0
+        if next_ppid <= 1:
+            # Optionally add init/systemd as root
+            if next_ppid == 1 and 1 not in visited:
+                init = _make_node_from_proc(1)
+                if init:
+                    chain.append(init)
+            break
+        current_pid = next_ppid
+
     chain.reverse()
     return chain if chain else None
 
 
+def try_resolve_from_socket(remote_ip: str, remote_port: int) -> Optional[ProcessNode]:
+    """
+    Last-resort: scan /proc/net/tcp and tcp6 to find the PID owning a socket,
+    then resolve it. Used when the poller's pid field is 0 or None.
+    """
+    hex_port = format(remote_port, "04X")
+    # Also try little-endian IP representation for tcp
+    for net_file in ("/proc/net/tcp6", "/proc/net/tcp"):
+        try:
+            with open(net_file) as f:
+                for line in f.readlines()[1:]:
+                    parts = line.split()
+                    if len(parts) < 10:
+                        continue
+                    rem_field = parts[2]        # remote address field
+                    if hex_port in rem_field.upper():
+                        inode = parts[9]
+                        pid = _inode_to_pid(inode)
+                        if pid:
+                            chain = resolve_process_chain(pid)
+                            return chain[-1] if chain else None
+        except OSError:
+            pass
+    return None
+
+
+def _inode_to_pid(inode: str) -> Optional[int]:
+    """Scan /proc/*/fd/ symlinks to find which PID owns a socket inode."""
+    target = f"socket:[{inode}]"
+    try:
+        for entry in os.scandir("/proc"):
+            if not entry.name.isdigit():
+                continue
+            try:
+                fd_dir = f"/proc/{entry.name}/fd"
+                for fd in os.scandir(fd_dir):
+                    try:
+                        if os.readlink(fd.path) == target:
+                            return int(entry.name)
+                    except OSError:
+                        pass
+            except OSError:
+                pass
+    except OSError:
+        pass
+    return None
+
+
 def root_process(chain: list[ProcessNode]) -> Optional[ProcessNode]:
-    """The topmost non-init process — usually the user-facing application."""
-    # Skip PID 1 (systemd/init) and return the next meaningful ancestor
     for node in chain:
         if node.pid > 1:
             return node
@@ -151,15 +268,12 @@ def root_process(chain: list[ProcessNode]) -> Optional[ProcessNode]:
 
 
 def target_process(chain: list[ProcessNode]) -> Optional[ProcessNode]:
-    """The actual process that owns the socket — the last in the chain."""
     return chain[-1] if chain else None
 
 
 def is_any_trusted(chain: list[ProcessNode]) -> bool:
-    """True if any node in the chain has been marked trusted."""
     return any(n.is_trusted for n in chain)
 
 
 def is_pkg_manager_chain(chain: list[ProcessNode]) -> bool:
-    """True if any node in the chain is a known package manager."""
     return any(n.is_package_manager for n in chain)
