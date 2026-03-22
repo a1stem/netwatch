@@ -168,14 +168,31 @@ class ProcessTreePanel(QWidget):
         self._tree.expandAll()
 
         # Detail strip
-        geo_str = rec.geo.tooltip() if rec.geo else ""
-        enc_str = rec.tls.risk_label if rec.tls else ""
+        geo_str   = rec.geo.tooltip() if rec.geo else ""
+        enc_str   = rec.tls.risk_label if rec.tls else ""
         iface_str = rec.iface.risk_text if rec.iface else ""
+
+        # Package manager verification detail
+        pkg_str = ""
+        if rec.pkg_event:
+            from backend.pkg_watcher import PkgVerification
+            v = rec.pkg_event.verification
+            vmap = {
+                PkgVerification.VERIFIED:   "✓ Verified system path",
+                PkgVerification.UNVERIFIED: "⚠ Unverified path",
+                PkgVerification.SUSPICIOUS: "🚨 SUSPICIOUS PATH — not a real pkg manager location",
+                PkgVerification.NOT_PKG:    "",
+            }
+            pkg_str = (f"\nPkg: {rec.pkg_event.proc_name} | "
+                       f"{vmap.get(v,'')} | "
+                       f"{'Official domain' if v != PkgVerification.SUSPICIOUS else 'CHECK IMMEDIATELY'}")
+
         self._detail.setText(
             f"{rec.proto}  {rec.local_ip}:{rec.local_port}  →  "
             f"{rec.remote_display}\n"
             f"{geo_str}   {enc_str}\n"
             f"{iface_str}"
+            f"{pkg_str}"
         )
 
         # Buttons

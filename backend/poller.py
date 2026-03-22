@@ -279,11 +279,13 @@ class Poller(QThread):
 
         pkg_event = None
         if chain and resolver.is_pkg_manager_chain(chain):
+            leaf = chain[-1]
             pkg_event = self._pkg_watcher.evaluate(
-                proc_name=chain[-1].name,
+                proc_name=leaf.name,
                 pid=pid,
+                exe_path=leaf.exe,          # pass real path for verification
                 remote_ip=rip,
-                remote_hostname=rip,
+                remote_hostname=rip,        # updated async via dns_resolved
                 remote_port=rp,
             )
 

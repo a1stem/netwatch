@@ -41,33 +41,55 @@ _DOT_COLOR = {
 }
 
 def _dot_color(rec) -> str:
-    if rec.is_blocked or rec.auto_denied:   return _DOT_COLOR["blocked"]
-    if rec.is_unidentified:                 return _DOT_COLOR["unidentified"]
-    if rec.is_pkg_manager:                  return _DOT_COLOR["update"]
-    if rec.is_trusted:                      return _DOT_COLOR["trusted"]
+    if rec.is_blocked or rec.auto_denied:
+        return _DOT_COLOR["blocked"]
+    if rec.is_unidentified:
+        return _DOT_COLOR["unidentified"]
+    if rec.is_pkg_manager:
+        # Masquerade or high-risk pkg → red dot instead of blue
+        if rec.pkg_event and rec.pkg_event.is_high_risk:
+            return _DOT_COLOR["blocked"]
+        return _DOT_COLOR["update"]
+    if rec.is_trusted:
+        return _DOT_COLOR["trusted"]
     return _DOT_COLOR["unknown"]
 
 def _row_bg(rec) -> Optional[QColor]:
-    if rec.auto_denied:                     return QColor("#FCEBEB")
-    if rec.is_blocked:                      return QColor("#FCEBEB")
-    if rec.is_unidentified:                 return QColor("#FFF0F0")
-    if rec.is_pkg_manager and rec.is_plaintext: return QColor("#FCEBEB")
-    if rec.is_pkg_manager:                  return QColor("#E6F1FB")
-    if not rec.is_trusted:                  return QColor("#FFFDF5")
+    if rec.auto_denied:                                         return QColor("#FCEBEB")
+    if rec.is_blocked:                                          return QColor("#FCEBEB")
+    if rec.is_unidentified:                                     return QColor("#FFF0F0")
+    if rec.is_pkg_manager and rec.pkg_event:
+        from backend.pkg_watcher import PkgRisk
+        if rec.pkg_event.risk == PkgRisk.MASQUERADE:           return QColor("#FCEBEB")
+        if rec.pkg_event.risk in (PkgRisk.HIGH, PkgRisk.CRITICAL): return QColor("#FCEBEB")
+        if rec.pkg_event.risk == PkgRisk.WARN:                 return QColor("#FAEEDA")
+        return QColor("#E6F1FB")                                # SAFE — blue
+    if rec.is_pkg_manager and rec.is_plaintext:                 return QColor("#FCEBEB")
+    if rec.is_pkg_manager:                                      return QColor("#FAEEDA")
+    if not rec.is_trusted:                                      return QColor("#FFFDF5")
     return None
 
 def _status_text(rec) -> str:
     parts = []
-    if rec.auto_denied:         parts.append("Auto-denied ⚠")
-    elif rec.is_blocked:        parts.append("Blocked")
-    elif rec.is_unidentified:   parts.append("⚠ No process ID")
+    if rec.auto_denied:
+        parts.append("Auto-denied ⚠")
+    elif rec.is_blocked:
+        parts.append("Blocked")
+    elif rec.is_unidentified:
+        parts.append("⚠ No process ID")
     elif rec.is_pkg_manager:
-        parts.append(rec.pkg_event.badge_text() if rec.pkg_event else "Update traffic")
-    elif rec.is_trusted:        parts.append("Trusted")
-    else:                       parts.append("Unknown")
-    if rec.is_plaintext:        parts.append("Unencrypted!")
-    if rec.is_wifi:             parts.append("WiFi")
-    if rec.is_vpn:              parts.append("VPN")
+        if rec.pkg_event:
+            parts.append(rec.pkg_event.badge_text())
+        else:
+            # No event yet — show conservative unverified label
+            parts.append("Update — unverified")
+    elif rec.is_trusted:
+        parts.append("Trusted")
+    else:
+        parts.append("Unknown")
+    if rec.is_plaintext:    parts.append("Unencrypted!")
+    if rec.is_wifi:         parts.append("WiFi")
+    if rec.is_vpn:          parts.append("VPN")
     return "  ·  ".join(parts)
 
 def _enc_text(rec) -> str:
