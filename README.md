@@ -209,4 +209,9 @@ Pull requests welcome. Priority areas:
 
 ## Licence
 
-MIT
+**Free for individuals and personal non-commercial use.**
+Commercial use (businesses, teams, managed services) requires a per-seat licence.
+
+→ Open a licensing enquiry: [github.com/a1stem/netwatch/issues](https://github.com/a1stem/netwatch/issues)
+
+See [LICENSE](LICENSE) for full terms.
