@@ -6,6 +6,7 @@ from __future__ import annotations
 import csv
 import os
 from datetime import datetime, timedelta
+from ui.sudoers_util import default_export_path
 from typing import TYPE_CHECKING
 
 from PyQt5.QtCore import Qt
@@ -158,7 +159,7 @@ class HistoryView(QWidget):
             return
         path, _ = QFileDialog.getSaveFileName(
             self, "Export history to CSV",
-            os.path.expanduser("~/netwatch_history.csv"),
+            default_export_path("netwatch_history.csv"),
             "CSV files (*.csv)"
         )
         if not path:

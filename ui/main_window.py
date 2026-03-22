@@ -28,6 +28,7 @@ from data.history import History
 import backend.geoip as geoip
 
 from ui.icon_loader import app_icon
+from ui.sudoers_util import default_export_path
 from ui.conn_table import ConnectionTableView
 from ui.proc_tree import ProcessTreePanel
 from ui.repo_panel import RepoPanel
@@ -442,7 +443,7 @@ class MainWindow(QMainWindow):
     def _export_history_csv(self) -> None:
         path, _ = QFileDialog.getSaveFileName(
             self, "Export history to CSV",
-            os.path.expanduser("~/netwatch_history.csv"),
+            default_export_path("netwatch_history.csv"),
             "CSV files (*.csv)"
         )
         if not path:
