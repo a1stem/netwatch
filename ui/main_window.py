@@ -93,6 +93,7 @@ _DARK_STYLE = """
     QTableView                  { border: 1px solid #45475a; color: #cdd6f4;
                                   background: #1e1e2e; alternate-background-color: #252535;
                                   gridline-color: #45475a; }
+    QTableView::item            { color: #cdd6f4; }
     QTableView::item:selected   { background: #45475a; color: #cdd6f4; }
     QTreeWidget                 { border: 1px solid #45475a; color: #cdd6f4;
                                   background: #1e1e2e; }
@@ -210,6 +211,7 @@ class MainWindow(QMainWindow):
         self._proc_tree = ProcessTreePanel()
         self._proc_tree.trust_requested.connect(self._on_trust_requested)
         self._proc_tree.block_requested.connect(self._on_block_record)
+        self._proc_tree.unblock_requested.connect(self._on_unblock_requested)
         self._proc_tree.setMinimumWidth(220)
         self._proc_tree.setMaximumWidth(360)
         splitter.addWidget(self._proc_tree)
@@ -302,6 +304,9 @@ class MainWindow(QMainWindow):
         self._theme_action.setText(
             "Switch to light theme" if dark else "Switch to dark theme"
         )
+        # Notify proc_tree so it recolours items and buttons
+        if hasattr(self, '_proc_tree'):
+            self._proc_tree.set_dark_mode(dark)
 
     def _toggle_theme(self) -> None:
         self._apply_theme(not self._dark_mode)
@@ -399,6 +404,23 @@ class MainWindow(QMainWindow):
     @pyqtSlot(object)
     def _on_block_record(self, rec) -> None:
         self._block_connection(rec)
+
+    @pyqtSlot(str, int)
+    def _on_unblock_requested(self, remote_ip: str, remote_port: int) -> None:
+        from backend import ufw as ufw_mod
+        # Remove UFW rule
+        result = ufw_mod.delete_rule(remote_ip, remote_port)
+        # Remove from trust store
+        self._trust_store.unblock_ip_port(remote_ip, remote_port)
+        if result.success:
+            self.statusBar().showMessage(
+                f"Unblocked {remote_ip}:{remote_port} — UFW rule removed", 5000
+            )
+        else:
+            self.statusBar().showMessage(
+                f"Unblocked in app (UFW rule may need manual removal): "
+                f"ufw delete deny out to {remote_ip} port {remote_port}", 8000
+            )
 
     def _on_block_selected(self) -> None:
         rec = self._table.selected_record()

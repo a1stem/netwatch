@@ -54,19 +54,37 @@ def _dot_color(rec) -> str:
         return _DOT_COLOR["trusted"]
     return _DOT_COLOR["unknown"]
 
+def _is_dark() -> bool:
+    from PyQt5.QtWidgets import QApplication
+    app = QApplication.instance()
+    if app is None:
+        return False
+    # Check background luminance of the window colour
+    c = app.palette().window().color()
+    return (c.red() * 0.299 + c.green() * 0.587 + c.blue() * 0.114) < 128
+
+
 def _row_bg(rec) -> Optional[QColor]:
-    if rec.auto_denied:                                         return QColor("#FCEBEB")
-    if rec.is_blocked:                                          return QColor("#FCEBEB")
-    if rec.is_unidentified:                                     return QColor("#FFF0F0")
+    dark = _is_dark()
+    if rec.auto_denied or rec.is_blocked:
+        return QColor("#3d1515") if dark else QColor("#FCEBEB")
+    if rec.is_unidentified:
+        return QColor("#2d1a1a") if dark else QColor("#FFF0F0")
     if rec.is_pkg_manager and rec.pkg_event:
         from backend.pkg_watcher import PkgRisk
-        if rec.pkg_event.risk == PkgRisk.MASQUERADE:           return QColor("#FCEBEB")
-        if rec.pkg_event.risk in (PkgRisk.HIGH, PkgRisk.CRITICAL): return QColor("#FCEBEB")
-        if rec.pkg_event.risk == PkgRisk.WARN:                 return QColor("#FAEEDA")
-        return QColor("#E6F1FB")                                # SAFE — blue
-    if rec.is_pkg_manager and rec.is_plaintext:                 return QColor("#FCEBEB")
-    if rec.is_pkg_manager:                                      return QColor("#FAEEDA")
-    if not rec.is_trusted:                                      return QColor("#FFFDF5")
+        if rec.pkg_event.risk == PkgRisk.MASQUERADE:
+            return QColor("#3d1515") if dark else QColor("#FCEBEB")
+        if rec.pkg_event.risk in (PkgRisk.HIGH, PkgRisk.CRITICAL):
+            return QColor("#3d1515") if dark else QColor("#FCEBEB")
+        if rec.pkg_event.risk == PkgRisk.WARN:
+            return QColor("#2d2010") if dark else QColor("#FAEEDA")
+        return QColor("#0d1f35") if dark else QColor("#E6F1FB")
+    if rec.is_pkg_manager and rec.is_plaintext:
+        return QColor("#3d1515") if dark else QColor("#FCEBEB")
+    if rec.is_pkg_manager:
+        return QColor("#2d2010") if dark else QColor("#FAEEDA")
+    if not rec.is_trusted:
+        return QColor("#252520") if dark else QColor("#FFFDF5")
     return None
 
 def _status_text(rec) -> str:
