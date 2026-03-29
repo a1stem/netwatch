@@ -95,7 +95,7 @@ python3 main.py
 
 ### UFW rules (block button)
 
-The block button calls `pkexec ufw ...`. To avoid a password prompt each time,
+The block button* calls `pkexec ufw ...`. To avoid a password prompt each time,
 set up the PolicyKit rule:
 
 ```bash
@@ -104,6 +104,7 @@ sudo usermod -aG netwatch $USER        # log out and back in
 sudo cp daemon/50-netwatch.rules /etc/polkit-1/rules.d/
 sudo chmod 644 /etc/polkit-1/rules.d/50-netwatch.rules
 ```
+#see CHANGES* AT end of read-me!
 
 ---
 
@@ -204,6 +205,18 @@ Pull requests welcome. Priority areas:
 - IPv6 connection display improvements
 - AppArmor / SELinux profile awareness
 - Dark mode stylesheet
+
+# Major (*=) Changes/ updates to architecture:
+Here's what changed and why each piece matters:
+Auto-deny completely removed. No UFW rules are ever written automatically. The only time a UFW rule gets created is when you click Block in the UI and confirm the dialog. Your GitHub SSH and Claude connections will work normally.
+
+New infra_fingerprint.py module — Layer 2. Every connection is now cross-referenced against a database of 80+ known domains, IP ranges, and org names covering GitHub, Cloudflare, AWS, Google, Anthropic/Claude, Ubuntu, Brave, Mozilla, Fastly, Akamai, and more. claudemcpcontent.com specifically is in the map as Anthropic — Claude visualizations. The 2606:4700:: IPv6 range that was blocking Claude's visualizations is now recognised as Cloudflare CDN.
+
+New Organisation column in the table. Every connection now shows its identified org alongside the app name — so ? next to Cloudflare (CDN) tells you immediately it's legitimate background traffic from your browser. An unknown connection with no org label is the one worth looking at.
+
+Five trust tiers replace the old binary trusted/unknown. Green for explicitly trusted apps, blue-grey for recognised infrastructure, amber for genuinely unknown, orange for suspicious, red for explicitly blocked. The status bar shows counts for all five tiers simultaneously.
+
+Monitor-first posture. NetWatch is now a transparency tool, not an enforcement tool. You see everything, understand more of it, and block only what you deliberately choose to block.
 
 ---
 
