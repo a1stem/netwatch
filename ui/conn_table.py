@@ -1,127 +1,143 @@
 """
-ui/conn_table.py — connection table with reliable selection signal.
-Key fix: use clicked signal directly instead of selectionModel().selectionChanged
-which fires before the proxy mapping is stable.
+ui/conn_table.py
+----------------
+Live connection table — five-tier trust model, org fingerprint column.
+
+Tiers and colours:
+  TRUSTED      green   — user explicitly trusted this exe
+  KNOWN_INFRA  blue    — recognised CDN / cloud / major service (monitor only)
+  UNKNOWN      amber   — unrecognised, flag for user attention
+  SUSPICIOUS   orange  — known-bad infra or masquerading pkg manager
+  BLOCKED      red     — user explicitly blocked
 """
 
 from __future__ import annotations
 from typing import Optional, TYPE_CHECKING
 
-from PyQt5.QtCore import Qt, QSortFilterProxyModel, QAbstractTableModel, QModelIndex, QVariant, pyqtSignal
+from PyQt5.QtCore import Qt, QSortFilterProxyModel, QAbstractTableModel, \
+    QModelIndex, QVariant, pyqtSignal
 from PyQt5.QtGui import QColor, QFont, QBrush
-from PyQt5.QtWidgets import (
-    QTableView, QHeaderView, QAbstractItemView
-)
+from PyQt5.QtWidgets import QTableView, QHeaderView, QAbstractItemView
 
 if TYPE_CHECKING:
     from backend.poller import ConnectionRecord
 
+# ── Columns ────────────────────────────────────────────────────────────────────
 COLS = [
-    ("●",          40,  False),
-    ("Application",180, True),
-    ("PID",        60,  False),
-    ("Interface",  80,  False),
-    ("Local port", 85,  False),
-    ("Remote host",210, True),
-    ("Enc",        55,  False),
-    ("Country",    70,  False),
-    ("Status",     170, False),
+    ("●",           36,  False),   # 0  tier dot
+    ("Application", 165, True),    # 1
+    ("Organisation",150, True),    # 2  NEW — org fingerprint
+    ("PID",         55,  False),   # 3
+    ("Interface",   75,  False),   # 4
+    ("Local port",  80,  False),   # 5
+    ("Remote host", 200, True),    # 6
+    ("Enc",         50,  False),   # 7
+    ("Country",     65,  False),   # 8
+    ("Status",      155, False),   # 9
 ]
 
-COL_DOT=0; COL_APP=1; COL_PID=2; COL_IFACE=3; COL_LPORT=4
-COL_REMOTE=5; COL_ENC=6; COL_COUNTRY=7; COL_STATUS=8
+COL_DOT=0; COL_APP=1; COL_ORG=2; COL_PID=3; COL_IFACE=4
+COL_LPORT=5; COL_REMOTE=6; COL_ENC=7; COL_COUNTRY=8; COL_STATUS=9
 
-_DOT_COLOR = {
-    "trusted":       "#639922",
-    "unknown":       "#BA7517",
-    "blocked":       "#A32D2D",
-    "auto-denied":   "#A32D2D",
-    "unidentified":  "#A32D2D",
-    "update":        "#185FA5",
+# ── Tier colours (light / dark pairs) ─────────────────────────────────────────
+_TIER_DOT = {
+    "trusted":      "#639922",
+    "known_infra":  "#378ADD",
+    "unknown":      "#BA7517",
+    "suspicious":   "#D85A30",
+    "blocked":      "#E24B4A",
 }
 
-def _dot_color(rec) -> str:
-    if rec.is_blocked or rec.auto_denied:
-        return _DOT_COLOR["blocked"]
-    if rec.is_unidentified:
-        return _DOT_COLOR["unidentified"]
-    if rec.is_pkg_manager:
-        # Masquerade or high-risk pkg → red dot instead of blue
-        if rec.pkg_event and rec.pkg_event.is_high_risk:
-            return _DOT_COLOR["blocked"]
-        return _DOT_COLOR["update"]
-    if rec.is_trusted:
-        return _DOT_COLOR["trusted"]
-    return _DOT_COLOR["unknown"]
+_TIER_BG_LIGHT = {
+    "trusted":      None,           # no highlight — trusted is normal
+    "known_infra":  None,           # no highlight — known infra is normal
+    "unknown":      "#FFFBF0",      # very subtle amber tint
+    "suspicious":   "#FFF0E8",      # orange tint
+    "blocked":      "#FFF0F0",      # red tint
+}
+
+_TIER_BG_DARK = {
+    "trusted":      None,
+    "known_infra":  None,
+    "unknown":      "#252218",      # subtle dark amber
+    "suspicious":   "#2a1a0f",      # dark orange
+    "blocked":      "#2d1515",      # dark red
+}
+
 
 def _is_dark() -> bool:
     from PyQt5.QtWidgets import QApplication
     app = QApplication.instance()
-    if app is None:
+    if not app:
         return False
-    # Check background luminance of the window colour
     c = app.palette().window().color()
     return (c.red() * 0.299 + c.green() * 0.587 + c.blue() * 0.114) < 128
 
 
-def _row_bg(rec) -> Optional[QColor]:
-    dark = _is_dark()
-    if rec.auto_denied or rec.is_blocked:
-        return QColor("#3d1515") if dark else QColor("#FCEBEB")
-    if rec.is_unidentified:
-        return QColor("#2d1a1a") if dark else QColor("#FFF0F0")
-    if rec.is_pkg_manager and rec.pkg_event:
-        from backend.pkg_watcher import PkgRisk
-        if rec.pkg_event.risk == PkgRisk.MASQUERADE:
-            return QColor("#3d1515") if dark else QColor("#FCEBEB")
-        if rec.pkg_event.risk in (PkgRisk.HIGH, PkgRisk.CRITICAL):
-            return QColor("#3d1515") if dark else QColor("#FCEBEB")
-        if rec.pkg_event.risk == PkgRisk.WARN:
-            return QColor("#2d2010") if dark else QColor("#FAEEDA")
-        return QColor("#0d1f35") if dark else QColor("#E6F1FB")
-    if rec.is_pkg_manager and rec.is_plaintext:
-        return QColor("#3d1515") if dark else QColor("#FCEBEB")
-    if rec.is_pkg_manager:
-        return QColor("#2d2010") if dark else QColor("#FAEEDA")
-    if not rec.is_trusted:
-        return QColor("#252520") if dark else QColor("#FFFDF5")
-    return None
+def _tier(rec: "ConnectionRecord") -> str:
+    return rec.trust_tier
 
-def _status_text(rec) -> str:
+
+def _dot_color(rec: "ConnectionRecord") -> str:
+    return _TIER_DOT.get(_tier(rec), _TIER_DOT["unknown"])
+
+
+def _row_bg(rec: "ConnectionRecord") -> Optional[QColor]:
+    t = _tier(rec)
+    color_str = (_TIER_BG_DARK if _is_dark() else _TIER_BG_LIGHT).get(t)
+    return QColor(color_str) if color_str else None
+
+
+def _status_text(rec: "ConnectionRecord") -> str:
     parts = []
-    if rec.auto_denied:
-        parts.append("Auto-denied ⚠")
-    elif rec.is_blocked:
+    t = _tier(rec)
+    if t == "blocked":
         parts.append("Blocked")
-    elif rec.is_unidentified:
-        parts.append("⚠ No process ID")
-    elif rec.is_pkg_manager:
-        if rec.pkg_event:
-            parts.append(rec.pkg_event.badge_text())
-        else:
-            # No event yet — show conservative unverified label
-            parts.append("Update — unverified")
-    elif rec.is_trusted:
+    elif t == "trusted":
         parts.append("Trusted")
+    elif t == "known_infra":
+        if rec.is_pkg_manager:
+            parts.append(rec.pkg_event.badge_text() if rec.pkg_event
+                         else "Update — unverified")
+        else:
+            parts.append("Known service")
+    elif t == "suspicious":
+        if rec.pkg_event and rec.pkg_event.is_suspicious_masquerade:
+            parts.append("⚠ Masquerade")
+        else:
+            parts.append("⚠ Suspicious")
     else:
         parts.append("Unknown")
-    if rec.is_plaintext:    parts.append("Unencrypted!")
-    if rec.is_wifi:         parts.append("WiFi")
-    if rec.is_vpn:          parts.append("VPN")
+    if rec.is_unidentified:
+        parts.append("no PID")
+    if rec.is_plaintext:
+        parts.append("Unencrypted!")
+    if rec.is_wifi:
+        parts.append("WiFi")
+    if rec.is_vpn:
+        parts.append("VPN")
     return "  ·  ".join(parts)
 
-def _enc_text(rec) -> str:
-    if rec.tls is None: return "?"
-    return {"ENCRYPTED":"TLS","LIKELY_ENC":"~TLS","PLAINTEXT":"HTTP","UNKNOWN":"?"}.get(
-        rec.tls.status.name, "?")
 
-def _enc_color(rec) -> Optional[QColor]:
-    if rec.tls is None: return None
-    return {"ENCRYPTED":QColor("#639922"),"LIKELY_ENC":QColor("#BA7517"),
-            "PLAINTEXT":QColor("#A32D2D")}.get(rec.tls.status.name)
+def _enc_text(rec: "ConnectionRecord") -> str:
+    if not rec.tls:
+        return "?"
+    return {"ENCRYPTED": "TLS", "LIKELY_ENC": "~TLS",
+            "PLAINTEXT": "HTTP", "UNKNOWN": "?"}.get(rec.tls.status.name, "?")
 
+
+def _enc_color(rec: "ConnectionRecord") -> Optional[QColor]:
+    if not rec.tls:
+        return None
+    return {"ENCRYPTED":  QColor("#639922"),
+            "LIKELY_ENC": QColor("#BA7517"),
+            "PLAINTEXT":  QColor("#E24B4A")}.get(rec.tls.status.name)
+
+
+# ── Model ──────────────────────────────────────────────────────────────────────
 
 class ConnectionModel(QAbstractTableModel):
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self._records: list = []
@@ -135,13 +151,22 @@ class ConnectionModel(QAbstractTableModel):
         for i, rec in enumerate(self._records):
             if rec.remote_ip == ip and rec.hostname != hostname:
                 rec.hostname = hostname
-                idx = self.index(i, COL_REMOTE)
-                self.dataChanged.emit(idx, idx)
+                self.dataChanged.emit(
+                    self.index(i, COL_REMOTE),
+                    self.index(i, COL_REMOTE)
+                )
+
+    def update_org(self, ip: str, org_label: str) -> None:
+        """Called when async DNS resolves and org is fingerprinted."""
+        for i, rec in enumerate(self._records):
+            if rec.remote_ip == ip:
+                self.dataChanged.emit(
+                    self.index(i, COL_ORG),
+                    self.index(i, COL_ORG)
+                )
 
     def record_at(self, row: int):
-        if 0 <= row < len(self._records):
-            return self._records[row]
-        return None
+        return self._records[row] if 0 <= row < len(self._records) else None
 
     def rowCount(self, parent=QModelIndex()) -> int:
         return len(self._records)
@@ -155,29 +180,41 @@ class ConnectionModel(QAbstractTableModel):
         return QVariant()
 
     def data(self, index: QModelIndex, role=Qt.DisplayRole):
-        if not index.isValid(): return QVariant()
+        if not index.isValid():
+            return QVariant()
         rec = self._records[index.row()]
         col = index.column()
-        if role == Qt.DisplayRole:      return self._display(rec, col)
+
+        if role == Qt.DisplayRole:
+            return self._display(rec, col)
         if role == Qt.ForegroundRole:
-            if col == COL_ENC:
-                c = _enc_color(rec)
-                if c: return QBrush(c)
             if col == COL_DOT:
                 return QBrush(QColor(_dot_color(rec)))
+            if col == COL_ENC:
+                c = _enc_color(rec)
+                if c:
+                    return QBrush(c)
+            if col == COL_ORG and rec.org and rec.org.is_known:
+                # Muted colour for known-infra org label
+                return QBrush(QColor("#6a82b4") if _is_dark()
+                               else QColor("#4a5a8a"))
         if role == Qt.BackgroundRole:
             bg = _row_bg(rec)
-            if bg: return QBrush(bg)
+            if bg:
+                return QBrush(bg)
         if role == Qt.TextAlignmentRole:
             if col in (COL_DOT, COL_PID, COL_LPORT, COL_ENC):
                 return Qt.AlignCenter
-        if role == Qt.ToolTipRole:      return self._tooltip(rec, col)
-        if role == Qt.UserRole:         return self._sort_key(rec, col)
+        if role == Qt.ToolTipRole:
+            return self._tooltip(rec, col)
+        if role == Qt.UserRole:
+            return self._sort_key(rec, col)
         return QVariant()
 
     def _display(self, rec, col) -> str:
         if col == COL_DOT:     return "●"
         if col == COL_APP:     return rec.app_name
+        if col == COL_ORG:     return rec.org_label
         if col == COL_PID:     return str(rec.pid) if rec.pid else ""
         if col == COL_IFACE:   return rec.iface_badge
         if col == COL_LPORT:   return str(rec.local_port)
@@ -188,34 +225,52 @@ class ConnectionModel(QAbstractTableModel):
         return ""
 
     def _tooltip(self, rec, col) -> str:
-        if col == COL_IFACE and rec.iface:  return rec.iface.risk_text
-        if col == COL_ENC and rec.tls:      return rec.tls.risk_label
-        if col == COL_COUNTRY and rec.geo:  return rec.geo.tooltip()
         if col == COL_APP:
-            chain = " → ".join(n.name for n in rec.proc_chain) or "No chain resolved"
-            return f"Chain: {chain}\nExe: {rec.app_exe or '(unknown)'}\nPID: {rec.pid or '?'}"
+            chain = " → ".join(n.name for n in rec.proc_chain) or "No chain"
+            return (f"Chain: {chain}\n"
+                    f"Exe: {rec.app_exe or '(unknown)'}\n"
+                    f"PID: {rec.pid or '?'}")
+        if col == COL_ORG:
+            if rec.org and rec.org.is_known:
+                return (f"Organisation: {rec.org.org_name}\n"
+                        f"Domain: {rec.org.root_domain or '(IP match)'}\n"
+                        f"Detail: {rec.org.detail or 'n/a'}\n"
+                        f"Tier: {rec.org.tier.name}")
+            return "Organisation not recognised"
         if col == COL_REMOTE:
             direction = "outbound" if rec.local_port > 1024 else "inbound"
-            return (f"IP: {rec.remote_ip}\nHost: {rec.hostname or '(resolving…)'}\n"
-                    f"Port: {rec.remote_port}  Proto: {rec.proto}\nDirection: {direction}")
+            return (f"IP: {rec.remote_ip}\n"
+                    f"Host: {rec.hostname or '(resolving…)'}\n"
+                    f"Port: {rec.remote_port}  Proto: {rec.proto}\n"
+                    f"Direction: {direction}")
+        if col == COL_IFACE and rec.iface:
+            return rec.iface.risk_text
+        if col == COL_ENC and rec.tls:
+            return rec.tls.risk_label
+        if col == COL_COUNTRY and rec.geo:
+            return rec.geo.tooltip()
         if col == COL_STATUS and rec.is_unidentified:
             return ("No process could be identified for this connection.\n"
-                    "This may be a kernel-level socket, a process that exited\n"
-                    "mid-poll, or a connection with insufficient permissions to read.\n"
-                    "Consider blocking if unrecognised.")
+                    "This may be a kernel socket, a process that exited\n"
+                    "mid-poll, or insufficient read permissions.\n\n"
+                    "Check the Organisation column — if it shows a known\n"
+                    "service this is likely legitimate background traffic.")
         return ""
 
     def _sort_key(self, rec, col):
-        if col == COL_APP:   return rec.app_name.lower()
-        if col == COL_PID:   return rec.pid
-        if col == COL_LPORT: return rec.local_port
-        if col == COL_REMOTE:return rec.remote_ip
+        if col == COL_APP:    return rec.app_name.lower()
+        if col == COL_ORG:    return rec.org_label.lower()
+        if col == COL_PID:    return rec.pid
+        if col == COL_LPORT:  return rec.local_port
+        if col == COL_REMOTE: return rec.remote_ip
         return ""
 
 
+# ── View ───────────────────────────────────────────────────────────────────────
+
 class ConnectionTableView(QTableView):
-    # New: dedicated signal that fires reliably when a row is selected
-    record_selected = pyqtSignal(object)    # emits ConnectionRecord or None
+
+    record_selected = pyqtSignal(object)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -232,7 +287,7 @@ class ConnectionTableView(QTableView):
         self.setSortingEnabled(True)
         self.setShowGrid(False)
         self.verticalHeader().setVisible(False)
-        self.verticalHeader().setDefaultSectionSize(30)
+        self.verticalHeader().setDefaultSectionSize(28)
         self.setEditTriggers(QAbstractItemView.NoEditTriggers)
 
         hh = self.horizontalHeader()
@@ -248,11 +303,6 @@ class ConnectionTableView(QTableView):
         f.setPointSize(10)
         self.setFont(f)
 
-        # ── KEY FIX: use clicked, not selectionModel().selectionChanged ──
-        # selectionChanged fires before the proxy mapping stabilises after
-        # a model reset, causing selected_record() to return None.
-        # clicked(index) fires only on actual user clicks, after the model
-        # is fully updated, so mapToSource always returns the correct row.
         self.clicked.connect(self._on_clicked)
 
     def _on_clicked(self, proxy_index: QModelIndex) -> None:
@@ -265,6 +315,9 @@ class ConnectionTableView(QTableView):
 
     def update_hostname(self, ip: str, hostname: str) -> None:
         self._model.update_hostname(ip, hostname)
+
+    def update_org(self, ip: str, org_label: str) -> None:
+        self._model.update_org(ip, org_label)
 
     def set_filter(self, text: str) -> None:
         self._proxy.setFilterFixedString(text)

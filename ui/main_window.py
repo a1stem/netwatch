@@ -184,16 +184,6 @@ class MainWindow(QMainWindow):
         self._interval_btn.clicked.connect(self._cycle_interval)
         toolbar.addWidget(self._interval_btn)
 
-        self._auto_deny_btn = QPushButton("Auto-deny: ON")
-        self._auto_deny_btn.setCheckable(True)
-        self._auto_deny_btn.setChecked(True)
-        self._auto_deny_btn.setToolTip(
-            "When ON: connections with no identifiable process are automatically\n"
-            "blocked via UFW and flagged red. Toggle to disable."
-        )
-        self._auto_deny_btn.clicked.connect(self._on_auto_deny_toggled)
-        toolbar.addWidget(self._auto_deny_btn)
-
         self._block_btn = QPushButton("Block selected")
         self._block_btn.setEnabled(False)
         self._block_btn.clicked.connect(self._on_block_selected)
@@ -280,12 +270,11 @@ class MainWindow(QMainWindow):
             trust_store=self._trust_store,
             history=self._history,
             interval_sec=interval,
-            auto_deny_unidentified=True,
         )
         self._poller.connections_updated.connect(self._on_connections)
         self._poller.pkg_alert.connect(self._on_pkg_alert)
         self._poller.dns_resolved.connect(self._on_dns_resolved)
-        self._poller.auto_deny_applied.connect(self._on_auto_deny_applied)
+        self._poller.org_resolved.connect(self._on_org_resolved)
         self._poller.error.connect(self._on_poller_error)
 
     def _setup_tray(self) -> None:
@@ -324,17 +313,20 @@ class MainWindow(QMainWindow):
                     self._alerted_unknowns.add(rec.app_exe)
                     self._tray.alert_unknown(rec.app_name, rec.remote_display)
 
-        n_unknown  = sum(1 for r in records if not r.is_trusted and not r.is_blocked)
-        n_trusted  = sum(1 for r in records if r.is_trusted)
-        n_blocked  = sum(1 for r in records if r.is_blocked)
-        n_unid     = sum(1 for r in records if r.is_unidentified)
+        from backend.poller import TrustTier
+        n_trusted  = sum(1 for r in records if r.trust_tier == TrustTier.TRUSTED)
+        n_infra    = sum(1 for r in records if r.trust_tier == TrustTier.KNOWN_INFRA)
+        n_unknown  = sum(1 for r in records if r.trust_tier == TrustTier.UNKNOWN)
+        n_suspicious = sum(1 for r in records if r.trust_tier == TrustTier.SUSPICIOUS)
+        n_blocked  = sum(1 for r in records if r.trust_tier == TrustTier.BLOCKED)
 
-        self._sb_connections.setText(
-            f"{len(records)} connections  ·  "
-            f"{n_trusted} trusted  ·  {n_unknown} unknown  ·  "
-            f"{n_blocked} blocked"
-            + (f"  ·  {n_unid} unidentified ⚠" if n_unid else "")
-        )
+        parts = [f"{len(records)} connections"]
+        if n_trusted:    parts.append(f"{n_trusted} trusted")
+        if n_infra:      parts.append(f"{n_infra} known service")
+        if n_unknown:    parts.append(f"{n_unknown} unknown")
+        if n_suspicious: parts.append(f"{n_suspicious} suspicious ⚠")
+        if n_blocked:    parts.append(f"{n_blocked} blocked")
+        self._sb_connections.setText("  ·  ".join(parts))
         self._tray.set_status(len(records), n_unknown)
 
         wifi_count = sum(1 for r in records if r.is_wifi)
@@ -353,12 +345,7 @@ class MainWindow(QMainWindow):
             rec is not None and not rec.is_blocked and not rec.auto_denied
         )
 
-    @pyqtSlot(object)
-    def _on_auto_deny_applied(self, rec) -> None:
-        self.statusBar().showMessage(
-            f"Auto-denied: unidentified connection to "
-            f"{rec.remote_ip}:{rec.remote_port}", 6000
-        )
+
 
     @pyqtSlot(object)
     def _on_pkg_alert(self, event: PkgEvent) -> None:
@@ -368,6 +355,10 @@ class MainWindow(QMainWindow):
     @pyqtSlot(str, str)
     def _on_dns_resolved(self, ip: str, hostname: str) -> None:
         self._table.update_hostname(ip, hostname)
+
+    @pyqtSlot(str, str)
+    def _on_org_resolved(self, ip: str, org_label: str) -> None:
+        self._table.update_org(ip, org_label)
 
     @pyqtSlot(str)
     def _on_poller_error(self, msg: str) -> None:
@@ -380,17 +371,7 @@ class MainWindow(QMainWindow):
         if idx == 1: self._history_view.refresh()
         elif idx == 2: self._repo_panel.refresh()
 
-    def _on_auto_deny_toggled(self, checked: bool) -> None:
-        self._poller.set_auto_deny(checked)
-        self._auto_deny_btn.setText(
-            "Auto-deny: ON" if checked else "Auto-deny: OFF"
-        )
-        self.statusBar().showMessage(
-            "Auto-deny enabled — unidentified connections will be blocked automatically."
-            if checked else
-            "Auto-deny disabled — unidentified connections will be flagged only.",
-            4000
-        )
+
 
     # ── Trust / Block ─────────────────────────────────────────────────────
 
