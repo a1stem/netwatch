@@ -17,9 +17,12 @@ See every app connecting to the internet — what process (and its full parent c
 - **Offline GeoIP** — country flag next to every remote IP using MaxMind GeoLite2 (no network call)
 - **Reverse DNS** — async hostname resolution with LRU cache; displayed next to raw IPs
 - **Connection history** — append-only SQLite log; browse by app, date, unknown-only, blocked-only
-- **UFW integration** — block any connection with one click; rule applied via `pkexec ufw deny out to <ip> port <port>`
+- **Manual block-only UFW integration** — NetWatch never writes UFW rules automatically; rules are created only when you click **Block** in the UI and confirm
 - **System tray** — lives in the notification area; alerts pop up for new unknowns and high-risk update traffic
 - **Trust store** — JSON file keyed by executable path; persists across sessions
+- **Infrastructure fingerprinting** — every connection is cross-referenced against 80+ known domains, IP ranges, and org names (GitHub, Cloudflare, AWS, Google, Anthropic/Claude, Ubuntu, Brave, Mozilla, Fastly, Akamai, and more)
+- **Organisation column** — shows identified organisation next to each app so known background traffic is easy to verify at a glance
+- **Five trust tiers** — trusted (green), known infrastructure (blue-grey), unknown (amber), suspicious (orange), blocked (red), with status-bar counts per tier
 
 ---
 
@@ -93,18 +96,13 @@ sudo systemctl enable --now netwatch
 python3 main.py
 ```
 
-### UFW rules (block button)
+### UFW rules (Block button only)
 
-The block button* calls `pkexec ufw ...`. To avoid a password prompt each time,
-set up the PolicyKit rule:
+NetWatch does **not** auto-deny. No UFW rules are written unless you explicitly
+click **Block** and confirm the dialog. This monitor-first posture avoids
+disrupting legitimate traffic such as GitHub SSH or Claude-related connections.
 
-```bash
-sudo groupadd netwatch
-sudo usermod -aG netwatch $USER        # log out and back in
-sudo cp daemon/50-netwatch.rules /etc/polkit-1/rules.d/
-sudo chmod 644 /etc/polkit-1/rules.d/50-netwatch.rules
-```
-#see CHANGES* AT end of read-me!
+When you do block, NetWatch uses `pkexec ufw ...` for that specific action.
 
 ---
 
@@ -112,36 +110,45 @@ sudo chmod 644 /etc/polkit-1/rules.d/50-netwatch.rules
 
 ```
 netwatch/
-├── main.py                     Entry point
-├── requirements.txt
+├── assets/
+│   └── netwatch_logo.svg
 ├── daemon/
-│   ├── netwatch_daemon.py      Privileged connection poller (Unix socket)
-│   ├── netwatch.service        systemd unit file
-│   └── 50-netwatch.rules       PolicyKit rule for passwordless ufw
-├── ui/
-│   ├── main_window.py          QMainWindow — wires everything together
-│   ├── conn_table.py           Live connection QTableView + model
-│   ├── proc_tree.py            Process ancestry QTreeWidget panel
-│   ├── repo_panel.py           Repository integrity audit tab
-│   ├── history_view.py         SQLite log browser tab
-│   └── notif_tray.py           System tray icon + alerts
+│   ├── netwatch_daemon.py
+│   └── netwatch.service
 ├── backend/
-│   ├── poller.py               QThread — central poll cycle
-│   ├── resolver.py             PID → full process parent chain
-│   ├── iface_mapper.py         Local IP → interface type (WiFi/ETH/VPN)
-│   ├── tls_heuristic.py        Port-based TLS/plaintext classification
-│   ├── dns_lookup.py           Async reverse DNS with LRU cache
-│   ├── geoip.py                Offline MaxMind country lookup
-│   ├── pkg_watcher.py          Package manager detection + risk scoring
-│   ├── repo_checker.py         sources.list / snap / flatpak audit
-│   └── ufw.py                  subprocess wrapper for ufw rules
-└── data/
-    ├── trust_store.py          JSON trust/block persistence
-    ├── history.py              SQLite connection log
-    ├── trusted_apps.json       Persisted trust decisions
-    ├── settings.json           Runtime configuration
-    ├── connections.db          SQLite history (auto-created)
-    └── GeoLite2-Country.mmdb   MaxMind GeoIP DB (download separately)
+│   ├── dns_lookup.py
+│   ├── geoip.py
+│   ├── iface_mapper.py
+│   ├── infra_fingerprint.py
+│   ├── pkg_watcher.py
+│   ├── poller.py
+│   ├── repo_checker.py
+│   ├── resolver.py
+│   ├── tls_heuristic.py
+│   ├── ufw.py
+│   └── __init__.py
+├── data/
+│   ├── connections.db
+│   ├── history.py
+│   ├── trust_store.py
+│   ├── trusted_apps.json
+│   └── __init__.py
+├── ui/
+│   ├── conn_table.py
+│   ├── history_view.py
+│   ├── icon_loader.py
+│   ├── main_window.py
+│   ├── notif_tray.py
+│   ├── proc_tree.py
+│   ├── repo_panel.py
+│   ├── sudoers_util.py
+│   └── __init__.py
+├── main.py
+├── run.sh
+├── deploy.sh
+├── requirements.txt
+├── README.md
+└── LICENSE
 ```
 
 ---
@@ -158,6 +165,7 @@ netwatch/
 | Remote host | Reverse-DNS hostname (or raw IP) + remote port |
 | Enc | TLS = port 443 (encrypted); HTTP = port 80 (plaintext ⚠) |
 | Country | Offline GeoIP flag + country code |
+| Organisation | Identified org/service for the remote endpoint (for example Cloudflare CDN, GitHub, Anthropic) |
 | Status | Trust state + any active flags |
 
 Click any row to populate the **Process tree** panel on the right, which shows the full ancestor chain from `systemd` down to the process owning the socket. Use this before blocking — if an unrecognised process is a child of `firefox`, blocking it may affect your browser.
@@ -206,17 +214,40 @@ Pull requests welcome. Priority areas:
 - AppArmor / SELinux profile awareness
 - Dark mode stylesheet
 
-# Major (*=) Changes/ updates to architecture:
-Here's what changed and why each piece matters:
-Auto-deny completely removed. No UFW rules are ever written automatically. The only time a UFW rule gets created is when you click Block in the UI and confirm the dialog. Your GitHub SSH and Claude connections will work normally.
+## Major changes
 
-New infra_fingerprint.py module — Layer 2. Every connection is now cross-referenced against a database of 80+ known domains, IP ranges, and org names covering GitHub, Cloudflare, AWS, Google, Anthropic/Claude, Ubuntu, Brave, Mozilla, Fastly, Akamai, and more. claudemcpcontent.com specifically is in the map as Anthropic — Claude visualizations. The 2606:4700:: IPv6 range that was blocking Claude's visualizations is now recognised as Cloudflare CDN.
+### Monitor-first blocking model
 
-New Organisation column in the table. Every connection now shows its identified org alongside the app name — so ? next to Cloudflare (CDN) tells you immediately it's legitimate background traffic from your browser. An unknown connection with no org label is the one worth looking at.
+Auto-deny is removed. NetWatch never writes UFW rules automatically. A UFW rule
+is created only after you click **Block** in the UI and confirm. This keeps
+GitHub SSH and Claude connections working unless you explicitly block them.
 
-Five trust tiers replace the old binary trusted/unknown. Green for explicitly trusted apps, blue-grey for recognised infrastructure, amber for genuinely unknown, orange for suspicious, red for explicitly blocked. The status bar shows counts for all five tiers simultaneously.
+### Infrastructure fingerprinting (Layer 2)
 
-Monitor-first posture. NetWatch is now a transparency tool, not an enforcement tool. You see everything, understand more of it, and block only what you deliberately choose to block.
+`backend/infra_fingerprint.py` adds an infra recognition layer. Connections are
+cross-referenced against 80+ known domains, IP ranges, and org names including
+GitHub, Cloudflare, AWS, Google, Anthropic/Claude, Ubuntu, Brave, Mozilla,
+Fastly, and Akamai.
+
+`claudemcpcontent.com` is mapped as Anthropic (Claude visualizations), and
+`2606:4700::` IPv6 traffic is recognized as Cloudflare CDN.
+
+### Organisation visibility in table
+
+The **Organisation** column now shows identified orgs next to app names, making
+legitimate background traffic easier to verify quickly.
+
+### Five-tier trust model
+
+The old trusted/unknown split is replaced by five tiers:
+
+- trusted (green)
+- known infrastructure (blue-grey)
+- unknown (amber)
+- suspicious (orange)
+- blocked (red)
+
+The status bar now reports counts across all five tiers.
 
 ---
 

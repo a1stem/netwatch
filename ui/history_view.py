@@ -24,6 +24,20 @@ if TYPE_CHECKING:
 COLS = ["Time", "App", "PID", "Interface", "Remote host", "Port",
         "Enc", "Country", "Trusted", "Blocked", "Pkg mgr"]
 
+_ROW_BG_LIGHT = {
+    "blocked": "#FCEBEB",
+    "unknown": "#FFFBF0",
+    "pkg_plaintext": "#FCEBEB",
+    "pkg": "#E6F1FB",
+}
+
+_ROW_BG_DARK = {
+    "blocked": "#2d1515",
+    "unknown": "#252218",
+    "pkg_plaintext": "#2d1515",
+    "pkg": "#1d2b3a",
+}
+
 
 class HistoryView(QWidget):
 
@@ -31,6 +45,7 @@ class HistoryView(QWidget):
         super().__init__(parent)
         self._history = history
         self._current_rows = []
+        self._dark_mode = False
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -117,13 +132,14 @@ class HistoryView(QWidget):
 
     def _populate(self, rows) -> None:
         self._table.setRowCount(0)
+        row_bg = _ROW_BG_DARK if self._dark_mode else _ROW_BG_LIGHT
         for r_idx, row in enumerate(rows):
             self._table.insertRow(r_idx)
             is_blocked  = bool(row["is_blocked"])
             is_trusted  = bool(row["is_trusted"])
+            is_unknown  = (not is_trusted) and (not is_blocked)
             is_pm       = bool(row["is_pkg_mgr"])
             plaintext   = row["tls_status"] == "PLAINTEXT"
-            is_unid     = str(row["app_name"] or "").strip() in ("", "?", "⚠ unidentified")
 
             values = [
                 str(row["seen_at"] or ""),
@@ -143,15 +159,21 @@ class HistoryView(QWidget):
                 item = QTableWidgetItem(val)
                 item.setTextAlignment(Qt.AlignVCenter | Qt.AlignLeft)
                 if is_blocked:
-                    item.setBackground(QBrush(QColor("#FCEBEB")))
-                elif is_unid:
-                    item.setBackground(QBrush(QColor("#FFF0F0")))
+                    item.setBackground(QBrush(QColor(row_bg["blocked"])))
+                elif is_unknown:
+                    item.setBackground(QBrush(QColor(row_bg["unknown"])))
                 elif plaintext and is_pm:
-                    item.setBackground(QBrush(QColor("#FCEBEB")))
+                    item.setBackground(QBrush(QColor(row_bg["pkg_plaintext"])))
                 elif is_pm:
-                    item.setBackground(QBrush(QColor("#E6F1FB")))
+                    item.setBackground(QBrush(QColor(row_bg["pkg"])))
                 self._table.setItem(r_idx, col, item)
             self._table.setRowHeight(r_idx, 24)
+
+    def set_dark_mode(self, dark: bool) -> None:
+        self._dark_mode = bool(dark)
+        # Repaint with mode-correct row colours.
+        if self._current_rows:
+            self._populate(self._current_rows)
 
     def _export_csv(self) -> None:
         if not self._current_rows:

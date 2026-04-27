@@ -296,6 +296,10 @@ class MainWindow(QMainWindow):
         # Notify proc_tree so it recolours items and buttons
         if hasattr(self, '_proc_tree'):
             self._proc_tree.set_dark_mode(dark)
+        if hasattr(self, "_table"):
+            self._table.set_dark_mode(dark)
+        if hasattr(self, "_history_view"):
+            self._history_view.set_dark_mode(dark)
 
     def _toggle_theme(self) -> None:
         self._apply_theme(not self._dark_mode)

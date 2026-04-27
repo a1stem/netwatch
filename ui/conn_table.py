@@ -64,14 +64,17 @@ _TIER_BG_DARK = {
     "blocked":      "#2d1515",      # dark red
 }
 
+_THEME_DARK = False
+
+
+def set_theme_dark(dark: bool) -> None:
+    """Set by main window when theme toggles."""
+    global _THEME_DARK
+    _THEME_DARK = bool(dark)
+
 
 def _is_dark() -> bool:
-    from PyQt5.QtWidgets import QApplication
-    app = QApplication.instance()
-    if not app:
-        return False
-    c = app.palette().window().color()
-    return (c.red() * 0.299 + c.green() * 0.587 + c.blue() * 0.114) < 128
+    return _THEME_DARK
 
 
 def _tier(rec: "ConnectionRecord") -> str:
@@ -328,3 +331,8 @@ class ConnectionTableView(QTableView):
             return None
         source_row = self._proxy.mapToSource(indexes[0]).row()
         return self._model.record_at(source_row)
+
+    def set_dark_mode(self, dark: bool) -> None:
+        set_theme_dark(dark)
+        # Ensure row colours are recalculated immediately.
+        self.viewport().update()

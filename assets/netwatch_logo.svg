@@ -68,12 +68,12 @@
 <circle cx="340" cy="340" r="8" fill="#4a7aee"/>
 <circle cx="340" cy="340" r="4" fill="#e8f0ff"/>
 
-<!-- WiFi icon (top of face) -->
-<g transform="translate(340, 248)">
-  <path d="M-52,-30 Q0,-65 52,-30" fill="none" stroke="#00c8a0" stroke-width="9" stroke-linecap="round"/>
-  <path d="M-34,-12 Q0,-36 34,-12" fill="none" stroke="#00c8a0" stroke-width="9" stroke-linecap="round"/>
-  <path d="M-16,6 Q0,-10 16,6" fill="none" stroke="#00c8a0" stroke-width="9" stroke-linecap="round"/>
-  <circle cx="0" cy="20" r="7" fill="#00c8a0"/>
+<!-- WiFi icon (large, overlapping lower two-thirds of watch face) -->
+<g transform="translate(340, 390)">
+  <path d="M-170,-110 Q0,-240 170,-110" fill="none" stroke="#00c8a0" stroke-width="14" stroke-linecap="round"/>
+  <path d="M-122,-58 Q0,-155 122,-58" fill="none" stroke="#00c8a0" stroke-width="14" stroke-linecap="round"/>
+  <path d="M-74,-10 Q0,-74 74,-10" fill="none" stroke="#00c8a0" stroke-width="14" stroke-linecap="round"/>
+  <circle cx="0" cy="42" r="14" fill="#00c8a0"/>
 </g>
 
 <!-- Padlock icon (left of face) -->
@@ -88,9 +88,5 @@
 <circle cx="340" cy="340" r="258" fill="none" stroke="#1a3060" stroke-width="2"/>
 <rect x="305" y="64" width="70" height="22" rx="11" fill="#0d1b3e" stroke="#1e3a6e" stroke-width="1.5"/>
 <rect x="315" y="596" width="50" height="18" rx="9" fill="#0d1b3e"/>
-
-<!-- Wordmark -->
-<text x="340" y="636" text-anchor="middle" font-size="36" font-family="Georgia, serif" font-weight="700" fill="#d0e0ff" letter-spacing="4">NetWatch</text>
-<text x="340" y="664" text-anchor="middle" font-size="13" font-family="Georgia, serif" font-weight="400" fill="#4a6090" letter-spacing="7">NETWORK MONITOR</text>
 
 </svg>
