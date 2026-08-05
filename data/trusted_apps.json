@@ -12,6 +12,12 @@
       "name": "NetworkManager",
       "added": "2026-03-20T14:58:50",
       "notes": ""
+    },
+    "/usr/bin/gh": {
+      "exe": "/usr/bin/gh",
+      "name": "gh",
+      "added": "2026-04-27T12:12:13",
+      "notes": ""
     }
   },
   "blocked_rules": [
@@ -29,14 +35,6 @@
       "proto": "tcp",
       "reason": "Blocked via NetWatch \u2014 ?",
       "added": "2026-03-18T17:25:27",
-      "ufw_applied": true
-    },
-    {
-      "remote_ip": "140.82.113.3",
-      "remote_port": 22,
-      "proto": "tcp",
-      "reason": "Auto-denied: no identifiable process",
-      "added": "2026-03-20T15:44:52",
       "ufw_applied": true
     },
     {

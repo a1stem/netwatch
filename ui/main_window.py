@@ -125,6 +125,9 @@ class MainWindow(QMainWindow):
         self._current_records: list[ConnectionRecord] = []
         self._alerted_unknowns: set[str] = set()
         self._dark_mode = False
+        # Cache of ip → org_label so resolved orgs survive across poll cycles.
+        # Populated by _on_org_resolved; applied in _on_connections.
+        self._org_cache: dict[str, str] = {}
 
         self._build_ui()
         self._build_menu()
@@ -308,6 +311,13 @@ class MainWindow(QMainWindow):
 
     @pyqtSlot(list)
     def _on_connections(self, records: list) -> None:
+        # Re-apply any previously resolved org labels before handing records
+        # to the table.  The poller builds fresh ConnectionRecord objects each
+        # poll, so async-resolved labels would otherwise vanish on every cycle.
+        for rec in records:
+            if rec.remote_ip in self._org_cache:
+                rec.org_label = self._org_cache[rec.remote_ip]
+
         self._current_records = records
         self._table.refresh(records)
 
@@ -362,7 +372,21 @@ class MainWindow(QMainWindow):
 
     @pyqtSlot(str, str)
     def _on_org_resolved(self, ip: str, org_label: str) -> None:
+        # 1. Persist in our cross-poll cache so the next refresh() can
+        #    re-apply the label without waiting for another DNS round-trip.
+        self._org_cache[ip] = org_label
+
+        # 2. Push the label into the live table (updates the visible cell).
         self._table.update_org(ip, org_label)
+
+        # 3. Back-fill the History log for any matching connection that was
+        #    recorded before the async org lookup finished.
+        try:
+            self._history.update_org_for_ip(ip, org_label)
+        except Exception:
+            # update_org_for_ip is best-effort; don't crash the UI slot.
+            log.debug("history.update_org_for_ip not available or failed",
+                      exc_info=True)
 
     @pyqtSlot(str)
     def _on_poller_error(self, msg: str) -> None:

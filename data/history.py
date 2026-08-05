@@ -217,3 +217,13 @@ class History:
         if count:
             log.info("history: purged %d records older than %d days", count, days)
         return count
+
+    # ── Update History ─────────────────────────────────────────────────────────────
+
+def update_org_for_ip(self, ip: str, org_label: str) -> None:
+    """Back-fill org_label for any history rows matching this IP."""
+    with self._conn:
+        self._conn.execute(
+            "UPDATE connections SET org_label = ? WHERE remote_ip = ?",
+            (org_label, ip),
+        )
