@@ -66,6 +66,7 @@ class ConnectionRecord:
     auto_denied: bool = False              # kept for history compat, never set
 
     first_seen: datetime = field(default_factory=datetime.now)
+    _org_label_override: Optional[str] = field(default=None, repr=False)
 
     # ── Computed properties ───────────────────────────────────────────────
 
@@ -112,16 +113,27 @@ class ConnectionRecord:
 
     @property
     def org_label(self) -> str:
-        """Human-readable org name for display — e.g. 'GitHub', 'Cloudflare CDN'."""
+        """Human-readable org name for display — e.g. 'GitHub', 'Cloudflare CDN'.
+ 
+        If an async resolver has pushed a confirmed label via the setter that
+        value is returned immediately.  Otherwise falls through to the original
+        computed logic so behaviour is identical to before for new records.
+        """
+        if self._org_label_override is not None:
+            return self._org_label_override
         if self.org and self.org.is_known:
             return self.org.display
         if self.hostname and self.hostname != self.remote_ip:
-            # Show root domain as fallback even if org not recognised
             parts = self.hostname.rstrip(".").split(".")
             if len(parts) >= 2:
                 return ".".join(parts[-2:])
         return ""
-
+ 
+    @org_label.setter
+    def org_label(self, value: str) -> None:
+        """Allow async org resolution to persist a label across poll cycles."""
+        self._org_label_override = value or None
+ 
     @property
     def remote_display(self) -> str:
         host = self.hostname if self.hostname and self.hostname != self.remote_ip \

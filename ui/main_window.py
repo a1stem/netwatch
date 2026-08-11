@@ -314,9 +314,15 @@ class MainWindow(QMainWindow):
         # Re-apply any previously resolved org labels before handing records
         # to the table.  The poller builds fresh ConnectionRecord objects each
         # poll, so async-resolved labels would otherwise vanish on every cycle.
+        # Guard the write: if org_label is a read-only @property on
+        # ConnectionRecord an unguarded assignment would raise AttributeError
+        # here and silently abort this entire slot, blanking the live table.
         for rec in records:
             if rec.remote_ip in self._org_cache:
-                rec.org_label = self._org_cache[rec.remote_ip]
+                try:
+                    rec.org_label = self._org_cache[rec.remote_ip]
+                except AttributeError:
+                    pass
 
         self._current_records = records
         self._table.refresh(records)

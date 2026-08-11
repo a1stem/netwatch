@@ -162,15 +162,21 @@ class ConnectionModel(QAbstractTableModel):
     def update_org(self, ip: str, org_label: str) -> None:
         """Called when async org fingerprint resolves.
 
-        Writes org_label onto every matching record so the value survives the
-        next refresh() call (which replaces _records wholesale).  The write
-        must happen *before* dataChanged so Qt redraws the correct string.
+        Attempts to write org_label back onto the record so the value survives
+        the next refresh() (which replaces _records wholesale).  The write is
+        guarded: if ConnectionRecord exposes org_label as a read-only property
+        we skip the write and still emit dataChanged so the cell repaints with
+        whatever the model computes from rec.org.
         """
         for i, rec in enumerate(self._records):
             if rec.remote_ip == ip:
-                # Persist the resolved label onto the record itself so it is
-                # not lost when the poller issues the next refresh().
-                rec.org_label = org_label
+                # Only write if the attribute is directly settable.
+                # If org_label is a @property without a setter this would
+                # raise AttributeError and silently kill the Qt slot.
+                try:
+                    rec.org_label = org_label
+                except AttributeError:
+                    pass
                 self.dataChanged.emit(
                     self.index(i, COL_ORG),
                     self.index(i, COL_ORG)
